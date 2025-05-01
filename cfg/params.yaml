@@ -18,7 +18,7 @@
     frames/lidar: rslidar
     frames/imu: imu_link
 
-    map/waitUntilMove: true
+    map/waitUntilMove: false
     map/dense/filtered: false
     map/sparse/leafSize: 0.1
 
