@@ -66,7 +66,7 @@ def generate_launch_description():
     dlio_map_node = Node(
         package='direct_lidar_inertial_odometry',
         executable='dlio_map_node',
-        output='log',  # Changed from 'screen' to 'log'
+        output='screen',  # Changed from 'screen' to 'log'
         parameters=[dlio_yaml_path, dlio_params_yaml_path],
         remappings=[
             ('keyframes', 'dlio/odom_node/pointcloud/keyframe'),
@@ -90,5 +90,5 @@ def generate_launch_description():
         declare_imu_topic_arg,
         dlio_odom_node,
         dlio_map_node,
-        rviz_node
+        # rviz_node
     ])

@@ -20,19 +20,19 @@
 
     map/waitUntilMove: false
     map/dense/filtered: false
-    map/sparse/leafSize: 0.1
+    map/sparse/leafSize: 0.2
 
     odom/gravity: 9.80665
     odom/computeTimeOffset: true
 
-    odom/imu/approximateGravity: false
+    odom/imu/approximateGravity: true
     odom/imu/calibration/gyro: true
     odom/imu/calibration/accel: true
     odom/imu/calibration/time: 3.0
     odom/imu/bufferSize: 5000
 
-    odom/preprocessing/cropBoxFilter/size: 0.5
-    odom/preprocessing/voxelFilter/res: 0.05
+    odom/preprocessing/cropBoxFilter/size: 0.2
+    odom/preprocessing/voxelFilter/res: 0.1
 
     odom/keyframe/threshD: 1.0
     odom/keyframe/threshR: 45.0
