@@ -22,6 +22,8 @@ def generate_launch_description():
     rviz = LaunchConfiguration('rviz', default='false')
     pointcloud_topic = LaunchConfiguration('pointcloud_topic', default='points_raw')
     imu_topic = LaunchConfiguration('imu_topic', default='imu_raw')
+    odom_topic = LaunchConfiguration('odom_topic', default='dlio/odom_node/odom')
+    registered_pointcloud_topic = LaunchConfiguration('registered_pointcloud_topic', default='dlio/odom_node/pointcloud/deskewed')
 
     # Define arguments
     declare_rviz_arg = DeclareLaunchArgument(
@@ -39,6 +41,16 @@ def generate_launch_description():
         default_value=imu_topic,
         description='IMU topic name'
     )
+    declare_odom_topic_arg = DeclareLaunchArgument(
+        'odom_topic',
+        default_value=odom_topic,
+        description='Odometry topic name'
+    )
+    declare_registered_pointcloud_topic_arg = DeclareLaunchArgument(
+        'registered_pointcloud_topic',
+        default_value=registered_pointcloud_topic,
+        description='Registered pointcloud topic name'
+    )
 
     # Load parameters
     dlio_yaml_path = PathJoinSubstitution([current_pkg, 'cfg', 'dlio.yaml'])
@@ -53,12 +65,12 @@ def generate_launch_description():
         remappings=[
             ('pointcloud', pointcloud_topic),
             ('imu', imu_topic),
-            ('odom', 'dlio/odom_node/odom'),
+            ('odom', odom_topic),
             ('pose', 'dlio/odom_node/pose'),
             ('path', 'dlio/odom_node/path'),
             ('kf_pose', 'dlio/odom_node/keyframes'),
             ('kf_cloud', 'dlio/odom_node/pointcloud/keyframe'),
-            ('deskewed', 'dlio/odom_node/pointcloud/deskewed'),
+            ('deskewed', registered_pointcloud_topic),
         ],
     )
 
@@ -88,6 +100,8 @@ def generate_launch_description():
         declare_rviz_arg,
         declare_pointcloud_topic_arg,
         declare_imu_topic_arg,
+        declare_odom_topic_arg,
+        declare_registered_pointcloud_topic_arg,
         dlio_odom_node,
         dlio_map_node,
         rviz_node
