@@ -41,11 +41,12 @@
     # IMU is reported about the green dot, so DLIO must carry the lever arm.
     # (Earlier this was zeroed for "jitter"; that jitter was the UBSan build
     # dropping scans, now fixed by a clean rebuild.)
-    extrinsics/baselink2imu/t: [0.00862, -0.00914, -0.04784]
-    extrinsics/baselink2imu/R: [ 1.,  0.,  0.,
-                                 0.,  1.,  0.,
-                                 0.,  0.,  1. ]
-    extrinsics/baselink2lidar/t: [0.0, 0.0, 0.0]
-    extrinsics/baselink2lidar/R: [ 1.,  0.,  0.,
-                                   0.,  1.,  0.,
-                                   0.,  0.,  1. ]
+    #extrinsics/baselink2imu/t: [0.00862, -0.00914, -0.04784]
+    extrinsics/baselink2imu/t: [0.34629,  -0.00914,  0.0335]  # TODO CHECK THIS!! 
+    extrinsics/baselink2imu/R: [ 0.,  0.,  1.,
+                                 1.,  0.,  0.,
+                                 0.,  1.,  0. ]
+    extrinsics/baselink2lidar/t: [0.33767,  0.000,  0.08134]
+    extrinsics/baselink2lidar/R: [ 0.,  0.,  1.,
+                                   1.,  0.,  0.,
+                                   0.,  1.,  0. ]

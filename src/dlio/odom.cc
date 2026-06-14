@@ -286,7 +286,7 @@ dlio::OdomNode::OdomNode() : Node("dlio_odom_node") {
   this->kf_cloud_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("kf_cloud", best_effort_qos);
   this->deskewed_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("deskewed", best_effort_qos);
   this->deskewed_not_transformed_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("deskewed_not_transformed", best_effort_qos);
-  this->deskewed_map_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("deskewed_and_transformed_to_map", best_effort_qos);
+  this->deskewed_map_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("deskewed_and_transformed_to_map", reliable_qos);
   this->dynamic_removed_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("dynamic_removed", best_effort_qos);
 
   this->br = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
@@ -2180,13 +2180,39 @@ void dlio::OdomNode::publishCloud(
 
   if (want_map) {
     sensor_msgs::msg::PointCloud2 msg;
-    prepare_xyz_msg(msg, "dlio_map", cloud_stamp, n);
-    sensor_msgs::PointCloud2Iterator<float> x(msg, "x"), y(msg, "y"), z(msg, "z");
+    // Replicate prepare_xyz_msg header setup
+    msg.header.frame_id = "dlio_map";
+    {
+      const int64_t nsec = cloud_stamp.nanoseconds();
+      msg.header.stamp.sec     = static_cast<int32_t>(nsec / 1000000000LL);
+      msg.header.stamp.nanosec = static_cast<uint32_t>(nsec % 1000000000LL);
+    }
+    msg.height = 1;
+    msg.width  = static_cast<uint32_t>(n);
+    msg.is_bigendian = false;
+    msg.is_dense = true;
+    // Build XYZI layout: setPointCloud2FieldsByString only knows "xyz"/"rgb"/"rgba",
+    // so append intensity manually after letting it set x/y/z.
+    {
+      sensor_msgs::PointCloud2Modifier mod(msg);
+      mod.setPointCloud2FieldsByString(1, "xyz");  // sets x(0) y(4) z(8), point_step=12
+    }
+    {
+      sensor_msgs::msg::PointField f;
+      f.name = "intensity"; f.offset = 12;
+      f.datatype = sensor_msgs::msg::PointField::FLOAT32; f.count = 1;
+      msg.fields.push_back(f);
+    }
+    msg.point_step = 16;
+    msg.row_step   = 16 * msg.width;
+    msg.data.resize(msg.row_step);
+    sensor_msgs::PointCloud2Iterator<float> x(msg, "x"), y(msg, "y"), z(msg, "z"), intensity(msg, "intensity");
     bool all_finite = true;
-    for (size_t i = 0; i < n; ++i, ++x, ++y, ++z) {
+    for (size_t i = 0; i < n; ++i, ++x, ++y, ++z, ++intensity) {
       const auto& p = (*cloud)[i];
       const Eigen::Vector4f v_map = T_cloud * Eigen::Vector4f(p.x, p.y, p.z, 1.f);
       *x = v_map.x(); *y = v_map.y(); *z = v_map.z();
+      *intensity = p.intensity;
       all_finite = all_finite && std::isfinite(v_map.x()) && std::isfinite(v_map.y()) && std::isfinite(v_map.z());
     }
     msg.is_dense = all_finite;
