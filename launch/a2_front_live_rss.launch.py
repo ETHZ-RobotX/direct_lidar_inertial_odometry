@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -17,9 +18,11 @@ def generate_launch_description():
     num_threads = LaunchConfiguration('num_threads')
     pointcloud_queue_size = LaunchConfiguration('pointcloud_queue_size')
     map_crop_enabled = LaunchConfiguration('map_crop_enabled')
+    rviz = LaunchConfiguration('rviz')
 
     dlio_yaml_path = PathJoinSubstitution([current_pkg, 'cfg', 'dlio.yaml'])
     dlio_params_yaml_path = PathJoinSubstitution([current_pkg, 'cfg', 'params.yaml'])
+    rviz_config_path = PathJoinSubstitution([current_pkg, 'launch', 'a2_front.rviz'])
 
     common_output_remappings = [
         ('map_pose', 'dlio/odom_node/map_pose'),
@@ -125,6 +128,10 @@ def generate_launch_description():
             'map_crop_enabled',
             default_value='true',
             description='Crop the persistent map around the robot for live memory control.'),
+        DeclareLaunchArgument(
+            'rviz',
+            default_value='false',
+            description='Launch RViz2 with the A2 front-lidar DLIO display config.'),
         odom_node,
         map_node,
         Node(
@@ -132,5 +139,13 @@ def generate_launch_description():
             executable='static_transform_publisher',
             name='dlio_map_to_map_tf',
             arguments=['0', '0', '0', '0', '0', '0', 'dlio_map', 'map'],
+        ),
+        Node(
+            package='rviz2',
+            executable='rviz2',
+            name='dlio_a2_front_rviz',
+            arguments=['-d', rviz_config_path],
+            condition=IfCondition(rviz),
+            parameters=[{'use_sim_time': ParameterValue(use_sim_time, value_type=bool)}],
         ),
     ])
