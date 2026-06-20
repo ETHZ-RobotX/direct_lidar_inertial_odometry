@@ -187,7 +187,9 @@ install( TARGETS dlio_odom_node dlio_map_node
 install( DIRECTORY cfg launch
          DESTINATION share/${PROJECT_NAME} 
 )
-install( PROGRAMS scripts/plot_run_stats.py
+install( PROGRAMS
+           scripts/plot_run_stats.py
+           scripts/render_dynamic_verify.py
          DESTINATION share/${PROJECT_NAME}/scripts
 )
 

@@ -1440,6 +1440,22 @@ void dlio::OdomNode::loadMDetectorFilterParams() {
                       this->m_detector_filter_config_.track_ttl_scans, 20);
   dlio::declare_param(this, "dynamic_filter/m_detector/static_veto_ratio",
                       this->m_detector_filter_config_.static_veto_ratio, 0.25);
+  dlio::declare_param(this, "dynamic_filter/m_detector/body_static_bypass/enabled",
+                      this->m_detector_filter_config_.body_static_bypass_enabled, false);
+  dlio::declare_param(this, "dynamic_filter/m_detector/body_static_bypass/min_points",
+                      this->m_detector_filter_config_.body_static_bypass_min_points, 80);
+  dlio::declare_param(this, "dynamic_filter/m_detector/body_static_bypass/min_foreground_points",
+                      this->m_detector_filter_config_.body_static_bypass_min_foreground_points, 50);
+  dlio::declare_param(this, "dynamic_filter/m_detector/body_static_bypass/min_foreground_ratio",
+                      this->m_detector_filter_config_.body_static_bypass_min_foreground_ratio, 0.15);
+  dlio::declare_param(this, "dynamic_filter/m_detector/body_static_bypass/min_vertical_extent",
+                      this->m_detector_filter_config_.body_static_bypass_min_vertical_extent, 0.45);
+  dlio::declare_param(this, "dynamic_filter/m_detector/body_static_bypass/max_vertical_extent",
+                      this->m_detector_filter_config_.body_static_bypass_max_vertical_extent, 2.40);
+  dlio::declare_param(this, "dynamic_filter/m_detector/body_static_bypass/max_horizontal_extent",
+                      this->m_detector_filter_config_.body_static_bypass_max_horizontal_extent, 2.50);
+  dlio::declare_param(this, "dynamic_filter/m_detector/body_static_bypass/track_static_override",
+                      this->m_detector_filter_config_.body_static_bypass_track_override, true);
 }
 
 void dlio::OdomNode::getParams() {
@@ -2517,7 +2533,7 @@ void dlio::OdomNode::updateDynamicFilterAfterCorrection() {
   if (this->m_detector_filter_.enabled()) {
     RCLCPP_INFO_THROTTLE(
         this->get_logger(), *this->get_clock(), 1000,
-        "[MDET] input=%zu reg_keep=%zu reg_removed=%zu map_keep=%zu dynamic=%zu case1=%zu case2=%zu case3=%zu seeds=%zu clusters=%zu cluster_pts=%zu track_rm=%zu stopped_rm=%zu track_cluster_rejects=%zu static_veto=%zu edge_rejects=%zu ground_rejects=%zu tracks=%zu/%zu tentative=%zu voxels=%zu warmup=%s fallback=%s projection=%s proj_fallback=%s/%s",
+        "[MDET] input=%zu reg_keep=%zu reg_removed=%zu map_keep=%zu dynamic=%zu case1=%zu case2=%zu case3=%zu seeds=%zu clusters=%zu cluster_pts=%zu track_rm=%zu stopped_rm=%zu track_cluster_rejects=%zu static_veto=%zu body_bypass=%zu/%zu edge_rejects=%zu ground_rejects=%zu tracks=%zu/%zu tentative=%zu voxels=%zu warmup=%s fallback=%s projection=%s proj_fallback=%s/%s",
         this->m_detector_filter_stats_.input_points,
         this->m_detector_filter_stats_.registration_kept,
         this->m_detector_filter_stats_.registration_removed,
@@ -2533,6 +2549,8 @@ void dlio::OdomNode::updateDynamicFilterAfterCorrection() {
         this->m_detector_filter_stats_.stopped_suppressed_points,
         this->m_detector_filter_stats_.track_cluster_reject_count,
         this->m_detector_filter_stats_.static_veto_count,
+        this->m_detector_filter_stats_.body_bypass_clusters,
+        this->m_detector_filter_stats_.body_bypass_points,
         this->m_detector_filter_stats_.edge_reject_count,
         this->m_detector_filter_stats_.ground_reject_count,
         this->m_detector_filter_stats_.confirmed_track_count,

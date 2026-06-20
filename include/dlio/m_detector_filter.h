@@ -77,6 +77,16 @@ public:
     // Lower is more static-preserving; higher allows dynamic labels near
     // previously stable structure.
     double static_veto_ratio = 0.25;
+    // Optional rescue path for slow/stopped people that were observed often
+    // enough to gain static voxel support before being classified dynamic.
+    bool body_static_bypass_enabled = false;
+    int body_static_bypass_min_points = 80;
+    int body_static_bypass_min_foreground_points = 50;
+    double body_static_bypass_min_foreground_ratio = 0.15;
+    double body_static_bypass_min_vertical_extent = 0.45;
+    double body_static_bypass_max_vertical_extent = 2.40;
+    double body_static_bypass_max_horizontal_extent = 2.50;
+    bool body_static_bypass_track_override = true;
   };
 
   struct Stats {
@@ -98,6 +108,8 @@ public:
     std::size_t edge_reject_count = 0;
     std::size_t ground_reject_count = 0;
     std::size_t static_veto_count = 0;
+    std::size_t body_bypass_points = 0;
+    std::size_t body_bypass_clusters = 0;
     std::size_t tentative_track_count = 0;
     std::size_t confirmed_track_count = 0;
     std::size_t track_count = 0;
@@ -355,9 +367,12 @@ private:
     int case1_count = 0;
     int case2_count = 0;
     int case3_count = 0;
+    int foreground_count = 0;
     int static_count = 0;
     bool accepted = false;
     bool strong = false;
+    bool body_like = false;
+    bool static_bypass = false;
     bool ground_like = false;
     bool edge_like = false;
     bool wall_like = false;
@@ -380,6 +395,7 @@ private:
     float confidence = 0.0f;
     bool confirmed = false;
     bool stopped = false;
+    bool body_like = false;
   };
 
   struct RingElevationEntry {
@@ -500,6 +516,7 @@ private:
   bool clusterLooksGroundLike(const Cluster& cluster) const;
   bool clusterLooksEdgeLike(const Cluster& cluster) const;
   bool clusterLooksWallLike(const Cluster& cluster) const;
+  bool clusterLooksBodyLike(const Cluster& cluster) const;
   float bboxOverlapRatio(const Cluster& cluster, const Track& track) const;
   std::size_t updateTracks(const std::vector<Cluster>& clusters);
   void pruneTracks();
@@ -519,6 +536,7 @@ private:
   mutable bool ring_elevation_lookup_dirty_ = true;
   std::vector<Track> tracks_;
   std::unordered_set<VoxelKey, VoxelKeyHash> active_track_mask_;
+  std::unordered_set<VoxelKey, VoxelKeyHash> active_body_track_mask_;
   Scratch scratch_;
   int scan_index_ = 0;
   int next_track_id_ = 1;

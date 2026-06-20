@@ -107,6 +107,19 @@ void MDetectorFilter::configure(const Config& config) {
   config_.track_confirm_hits = std::max(config_.track_confirm_hits, 1);
   config_.track_ttl_scans = std::max(config_.track_ttl_scans, 1);
   config_.static_veto_ratio = std::clamp(config_.static_veto_ratio, 0.0, 1.0);
+  config_.body_static_bypass_min_points =
+      std::max(config_.body_static_bypass_min_points, 1);
+  config_.body_static_bypass_min_foreground_points =
+      std::max(config_.body_static_bypass_min_foreground_points, 1);
+  config_.body_static_bypass_min_foreground_ratio =
+      std::clamp(config_.body_static_bypass_min_foreground_ratio, 0.0, 1.0);
+  config_.body_static_bypass_min_vertical_extent =
+      std::max(config_.body_static_bypass_min_vertical_extent, config_.voxel_size);
+  config_.body_static_bypass_max_vertical_extent =
+      std::max(config_.body_static_bypass_max_vertical_extent,
+               config_.body_static_bypass_min_vertical_extent);
+  config_.body_static_bypass_max_horizontal_extent =
+      std::max(config_.body_static_bypass_max_horizontal_extent, config_.voxel_size);
   ring_elevation_sum_.assign(static_cast<std::size_t>(config_.projection_rows), 0.0f);
   ring_elevation_count_.assign(static_cast<std::size_t>(config_.projection_rows), 0);
   invalidateRingElevationLookupCache();
@@ -122,6 +135,7 @@ void MDetectorFilter::reset() {
   history_order_.clear();
   tracks_.clear();
   active_track_mask_.clear();
+  active_body_track_mask_.clear();
   std::fill(ring_elevation_sum_.begin(), ring_elevation_sum_.end(), 0.0f);
   std::fill(ring_elevation_count_.begin(), ring_elevation_count_.end(), 0);
   invalidateRingElevationLookupCache();
@@ -1021,6 +1035,10 @@ std::vector<MDetectorFilter::Cluster> MDetectorFilter::buildClusters(
       if (idx < case3_points.size() && case3_points[idx]) {
         ++cluster.case3_count;
       }
+      if ((idx < case1_points.size() && case1_points[idx]) ||
+          (idx < case2_points.size() && case2_points[idx])) {
+        ++cluster.foreground_count;
+      }
       if (idx < static_supported_points.size() && static_supported_points[idx]) {
         ++cluster.static_count;
       }
@@ -1094,6 +1112,7 @@ std::vector<MDetectorFilter::Cluster> MDetectorFilter::buildClusters(
     cluster.ground_like = clusterLooksGroundLike(cluster);
     cluster.edge_like = clusterLooksEdgeLike(cluster);
     cluster.wall_like = clusterLooksWallLike(cluster);
+    cluster.body_like = clusterLooksBodyLike(cluster);
     const Eigen::Vector3f extent = cluster.max - cluster.min;
     const float max_extent = extent.maxCoeff();
     const float static_ratio =
@@ -1105,10 +1124,14 @@ std::vector<MDetectorFilter::Cluster> MDetectorFilter::buildClusters(
     const bool static_veto =
         static_ratio > static_cast<float>(config_.static_veto_ratio) &&
         seed_ratio < 0.60f;
+    const bool body_static_bypass =
+        config_.body_static_bypass_enabled &&
+        static_veto &&
+        cluster.body_like;
     // Accepted clusters need a substantial moving-event seed fraction. These
     // seed-ratio thresholds are not public parameters yet; expose them before
     // doing fine M-detector aggressiveness tuning across datasets.
-    const bool enough_dynamic_support = seed_ratio >= 0.45f;
+    const bool enough_dynamic_support = seed_ratio >= 0.45f || body_static_bypass;
 
     cluster.accepted =
         static_cast<int>(cluster.point_indices.size()) >= config_.min_cluster_points &&
@@ -1117,7 +1140,8 @@ std::vector<MDetectorFilter::Cluster> MDetectorFilter::buildClusters(
         !cluster.ground_like &&
         !cluster.edge_like &&
         !cluster.wall_like &&
-        !static_veto;
+        (!static_veto || body_static_bypass);
+    cluster.static_bypass = cluster.accepted && body_static_bypass;
     // Strong clusters can confirm tracks immediately. The seed ratio is
     // deliberately hidden for now and should become a parameter if this backend
     // is tuned beyond the current dynamic dataset.
@@ -1178,6 +1202,28 @@ bool MDetectorFilter::clusterLooksWallLike(const Cluster& cluster) const {
          vertical >= 0.8f &&
          static_ratio >= 0.25f &&
          seed_ratio < 0.50f;
+}
+
+bool MDetectorFilter::clusterLooksBodyLike(const Cluster& cluster) const {
+  if (!config_.body_static_bypass_enabled || cluster.point_indices.empty()) {
+    return false;
+  }
+
+  const Eigen::Vector3f extent = cluster.max - cluster.min;
+  const float vertical = extent.z();
+  const float horizontal = std::max(extent.x(), extent.y());
+  const float foreground_ratio =
+      static_cast<float>(cluster.foreground_count) /
+      static_cast<float>(std::max<std::size_t>(cluster.point_indices.size(), 1U));
+
+  return static_cast<int>(cluster.point_indices.size()) >=
+             config_.body_static_bypass_min_points &&
+         cluster.foreground_count >= config_.body_static_bypass_min_foreground_points &&
+         foreground_ratio >=
+             static_cast<float>(config_.body_static_bypass_min_foreground_ratio) &&
+         vertical >= static_cast<float>(config_.body_static_bypass_min_vertical_extent) &&
+         vertical <= static_cast<float>(config_.body_static_bypass_max_vertical_extent) &&
+         horizontal <= static_cast<float>(config_.body_static_bypass_max_horizontal_extent);
 }
 
 float MDetectorFilter::bboxOverlapRatio(const Cluster& cluster, const Track& track) const {
@@ -1261,6 +1307,7 @@ std::size_t MDetectorFilter::updateTracks(const std::vector<Cluster>& clusters) 
     track.min_key = cluster.min_key;
     track.max_key = cluster.max_key;
     track.mask_keys = paddedClusterMaskKeys(cluster);
+    track.body_like = track.body_like || cluster.body_like;
     ++track.age;
     ++track.hits;
     track.missed = 0;
@@ -1300,6 +1347,7 @@ std::size_t MDetectorFilter::updateTracks(const std::vector<Cluster>& clusters) 
     track.confidence = cluster.strong ? 1.0f : 0.5f;
     track.confirmed = cluster.strong || config_.track_confirm_hits <= 1;
     track.ttl_remaining = track.confirmed ? config_.track_ttl_scans : 0;
+    track.body_like = cluster.body_like;
     tracks_.push_back(std::move(track));
   }
 
@@ -1324,11 +1372,17 @@ void MDetectorFilter::pruneTracks() {
 
 void MDetectorFilter::rebuildActiveTrackMask() {
   active_track_mask_.clear();
+  active_body_track_mask_.clear();
   for (const Track& track : tracks_) {
     if (!track.confirmed || track.ttl_remaining <= 0) {
       continue;
     }
     active_track_mask_.insert(track.mask_keys.begin(), track.mask_keys.end());
+    if (config_.body_static_bypass_enabled &&
+        config_.body_static_bypass_track_override &&
+        track.body_like) {
+      active_body_track_mask_.insert(track.mask_keys.begin(), track.mask_keys.end());
+    }
   }
 }
 
@@ -1558,6 +1612,7 @@ MDetectorFilter::MappingResult MDetectorFilter::update(
       const bool static_veto =
           strong_static_support &&
           !in_track;
+      const bool enough_moving_votes = moving_votes >= config_.min_history_votes;
       if (static_veto) {
         ++local_static_veto_count;
       }
@@ -1573,7 +1628,7 @@ MDetectorFilter::MappingResult MDetectorFilter::update(
         case3_points[i] = true;
         ++local_case3_count;
       }
-      if (!static_veto && moving_votes >= config_.min_history_votes) {
+      if (!static_veto && enough_moving_votes) {
         if (!seed_points[i]) {
           seed_points[i] = true;
           seed_indices.push_back(i);
@@ -1618,12 +1673,18 @@ MDetectorFilter::MappingResult MDetectorFilter::update(
         continue;
       }
       ++result.stats.cluster_count;
+      if (cluster.static_bypass) {
+        ++result.stats.body_bypass_clusters;
+      }
       for (const std::size_t idx : cluster.point_indices) {
         if (idx >= cluster_points.size() || cluster_points[idx]) {
           continue;
         }
         cluster_points[idx] = true;
         ++result.stats.cluster_points;
+        if (cluster.static_bypass) {
+          ++result.stats.body_bypass_points;
+        }
       }
     }
     result.stats.track_cluster_reject_count = updateTracks(clusters);
@@ -1673,17 +1734,25 @@ MDetectorFilter::MappingResult MDetectorFilter::update(
     const bool current_foreground =
         (i < case1_points.size() && case1_points[i]) ||
         (i < case2_points.size() && case2_points[i]);
+    const bool in_body_track =
+        config_.body_static_bypass_enabled &&
+        config_.body_static_bypass_track_override &&
+        active_body_track_mask_.find(point_keys[i]) != active_body_track_mask_.end();
     bool in_track = i < track_points.size() && track_points[i];
     bool in_stopped = i < stopped_points.size() && stopped_points[i];
     bool in_cluster = i < cluster_points.size() && cluster_points[i];
     const bool case3_only_track_support =
         i < case3_points.size() && case3_points[i] && !current_foreground;
-    if (case3_only_track_support) {
+    const bool body_track_continuity =
+        in_body_track &&
+        i < case3_points.size() &&
+        case3_points[i];
+    if (case3_only_track_support && !body_track_continuity) {
       in_track = false;
       in_stopped = false;
       in_cluster = false;
     }
-    if (static_supported && !current_foreground) {
+    if (static_supported && !current_foreground && !body_track_continuity) {
       in_track = false;
       in_stopped = false;
       in_cluster = false;

@@ -5,6 +5,7 @@
 #include <Eigen/Core>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -123,6 +124,45 @@ pcl::PointCloud<PointType>::Ptr lowSeedRatioCluster(std::uint16_t ring = 8) {
       ringYawPoint(2.10f, 2.8f, ring, 2.003, 128U * 707U),
       ringYawPoint(2.12f, 3.2f, ring, 2.004, 128U * 708U),
       ringYawPoint(2.14f, 3.6f, ring, 2.005, 128U * 709U),
+  });
+}
+
+PointType bodyBypassPoint(std::size_t index, float range, double timestamp) {
+  constexpr std::array<float, 9> kYawDeg{
+      0.2f, 0.4f, 0.6f, 0.8f, 1.0f, 1.2f, 1.4f, 1.6f, 1.8f};
+  constexpr std::array<float, 9> kElevationDeg{
+      -18.0f, -13.0f, -8.0f, -3.0f, 2.0f, 7.0f, 12.0f, 17.0f, 22.0f};
+  const std::uint16_t ring = static_cast<std::uint16_t>(20U + index);
+  const auto raw_index = static_cast<std::uint32_t>(128U * (700U + index));
+  return ringYawElevationPoint(range,
+                               kYawDeg[index],
+                               kElevationDeg[index],
+                               ring,
+                               timestamp + 1.0e-4 * static_cast<double>(index),
+                               raw_index);
+}
+
+pcl::PointCloud<PointType>::Ptr bodyBypassNearSubset(double timestamp) {
+  return cloud({
+      bodyBypassPoint(4U, 2.0f, timestamp),
+      bodyBypassPoint(5U, 2.0f, timestamp),
+      bodyBypassPoint(6U, 2.0f, timestamp),
+      bodyBypassPoint(7U, 2.0f, timestamp),
+      bodyBypassPoint(8U, 2.0f, timestamp),
+  });
+}
+
+pcl::PointCloud<PointType>::Ptr bodyBypassScan(float range, double timestamp) {
+  return cloud({
+      bodyBypassPoint(0U, range, timestamp),
+      bodyBypassPoint(1U, range, timestamp),
+      bodyBypassPoint(2U, range, timestamp),
+      bodyBypassPoint(3U, range, timestamp),
+      bodyBypassPoint(4U, range, timestamp),
+      bodyBypassPoint(5U, range, timestamp),
+      bodyBypassPoint(6U, range, timestamp),
+      bodyBypassPoint(7U, range, timestamp),
+      bodyBypassPoint(8U, range, timestamp),
   });
 }
 
@@ -876,6 +916,43 @@ TEST(MDetectorFilter, StaticSupportedWallVetoesDynamicRemoval) {
 
   EXPECT_GT(repeated.keyframe_cloud->size(), 0U);
   EXPECT_EQ(repeated.dynamic_points_map->size(), 0U);
+}
+
+TEST(MDetectorFilter, BodyStaticBypassRescuesHumanShapedStaticSupportedForeground) {
+  auto run_case = [](bool body_bypass_enabled) {
+    auto cfg = config();
+    cfg.static_veto_ratio = 0.10;
+    cfg.min_cluster_points = 9;
+    cfg.min_track_cluster_points = 9;
+    cfg.track_confirm_hits = 2;
+    cfg.body_static_bypass_enabled = body_bypass_enabled;
+    cfg.body_static_bypass_min_points = 9;
+    cfg.body_static_bypass_min_foreground_points = 9;
+    cfg.body_static_bypass_min_foreground_ratio = 0.90;
+    cfg.body_static_bypass_min_vertical_extent = 0.80;
+    cfg.body_static_bypass_max_vertical_extent = 1.50;
+    cfg.body_static_bypass_max_horizontal_extent = 1.00;
+
+    dlio::MDetectorFilter filter(cfg);
+    const Eigen::Vector3f origin = Eigen::Vector3f::Zero();
+    const Eigen::Matrix4f I = Eigen::Matrix4f::Identity();
+
+    filter.update(bodyBypassNearSubset(1.0), I, origin, I, 1.0);
+    filter.update(bodyBypassNearSubset(1.1), I, origin, I, 1.1);
+    filter.update(bodyBypassScan(5.0f, 1.2), I, origin, I, 1.2);
+    return filter.update(bodyBypassScan(2.0f, 1.3), I, origin, I, 1.3);
+  };
+
+  const auto disabled = run_case(false);
+  EXPECT_EQ(disabled.stats.cluster_count, 0U);
+  EXPECT_EQ(disabled.dynamic_points_map->size(), 0U);
+  EXPECT_GT(disabled.stats.static_veto_count, 0U);
+
+  const auto enabled = run_case(true);
+  EXPECT_EQ(enabled.stats.body_bypass_clusters, 1U);
+  EXPECT_GE(enabled.stats.body_bypass_points, bodyBypassScan(2.0f, 1.3)->size());
+  EXPECT_GE(enabled.dynamic_points_map->size(), bodyBypassScan(2.0f, 1.3)->size());
+  EXPECT_GT(enabled.stats.dynamic_removed, disabled.stats.dynamic_removed);
 }
 
 TEST(MDetectorFilter, LowSeedRatioClusterDoesNotRemoveOrCreateTrack) {

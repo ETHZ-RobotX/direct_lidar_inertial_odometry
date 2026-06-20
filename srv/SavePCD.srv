@@ -1,4 +1,6 @@
+# Use leaf_size <= 0 to default to map/sparse/leafSize.
 float32 leaf_size
+# Use an empty save_path to default to /tmp/dlio_maps.
 string save_path
 ---
 bool success

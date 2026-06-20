@@ -31,11 +31,11 @@
     # Optional mission-state export from the odometry node. When enabled, the
     # node overwrites run_stats.csv on startup and writes publication-quality
     # pose/twist/bias plots on normal shutdown, including ctrl-c shutdown.
-    run_stats/enabled: true
+    run_stats/enabled: false
     # Leave this under /tmp unless a mission-specific artifact directory is desired.
     run_stats/output_dir: "/tmp/dlio_run_stats"
-    run_stats/overwrite: true
-    run_stats/plot_on_shutdown: true
+    run_stats/overwrite: false
+    run_stats/plot_on_shutdown: false
     run_stats/plot_dpi: 600
     run_stats/plot_script: ""
 
@@ -45,7 +45,7 @@
     odom/computeTimeOffset: false
     # OpenMP worker count used by GICP and scan deskewing. Keep this conservative
     # on live robots to avoid CPU oversubscription and timing jitter.
-    odom/num_threads: 4
+    odom/num_threads: 8
 
     odom/imu/approximateGravity: true
     odom/imu/calibration/gyro: true
@@ -57,7 +57,7 @@
     # propagation. ROS-standard IMUs are expected to report accel in m/s^2 and
     # gyro in rad/s. Some bags/drivers report accel in g and gyro in deg/s; this
     # block detects that early and scales the data before DLIO calibration.
-    odom/imu/unit_check/enabled: true
+    odom/imu/unit_check/enabled: false
     # Auto unit detection disabled: IMU is assumed to already be SI
     # (accel in m/s^2, gyro in rad/s). Scales are forced to 1.0; no rescaling.
     odom/imu/unit_check/auto_scale: false
@@ -69,18 +69,18 @@
     odom/imu/unit_check/accel_scale_override: 0.0
     odom/imu/unit_check/gyro_scale_override: 0.0
 
-    odom/preprocessing/cropBoxFilter/size: 0.1
-    odom/preprocessing/voxelFilter/res: 0.05
+    odom/preprocessing/cropBoxFilter/size: 0.5
+    odom/preprocessing/voxelFilter/res: 0.15
 
-    odom/keyframe/threshD: 1.25
+    odom/keyframe/threshD: 5.0
     odom/keyframe/threshR: 5.0
 
     odom/submap/keyframe/knn: 10
     odom/submap/keyframe/kcv: 10
     odom/submap/keyframe/kcc: 10
 
-    odom/gicp/minNumPoints: 128
-    odom/gicp/kCorrespondences: 21
+    odom/gicp/minNumPoints: 64
+    odom/gicp/kCorrespondences: 7
     odom/gicp/maxCorrespondenceDistance: 0.5
     odom/gicp/maxIterations: 64
 
@@ -92,7 +92,7 @@
     odom/gicp/degeneracy/trans_eig_abs_threshold: 50.0
     odom/gicp/degeneracy/reset_consecutive_count: 10
 
-    odom/restart/geometry_gate/enabled: true
+    odom/restart/geometry_gate/enabled: false
     odom/restart/geometry_gate/min_eigenvalue: 100.0
 
     # Dynamic object filtering. The only backend is the clean-room
@@ -114,8 +114,8 @@
     dynamic_filter/force_removed_cloud_output: false
     dynamic_filter/voxel_size: 0.20
     dynamic_filter/min_range: 1.0
-    dynamic_filter/max_range: 10.0
-    dynamic_filter/warmup_scans: 5
+    dynamic_filter/max_range: 8.0
+    dynamic_filter/warmup_scans: 8
     dynamic_filter/static_score_threshold: 2
     dynamic_filter/static_window_scans: 5
     dynamic_filter/max_age_scans: 300
@@ -129,27 +129,37 @@
     dynamic_filter/m_detector/projection/use_point_timestamp: true
     # Temporal history: longer/more frames are more robust but slower to react;
     # increasing min_history_votes is more static-preserving.
-    dynamic_filter/m_detector/history_duration: 0.5
-    dynamic_filter/m_detector/max_history_frames: 5
+    dynamic_filter/m_detector/history_duration: 0.8
+    dynamic_filter/m_detector/max_history_frames: 8
     dynamic_filter/m_detector/frame_duration: 0.1
-    dynamic_filter/m_detector/min_history_votes: 3
+    dynamic_filter/m_detector/min_history_votes: 4
     # Depth-event sensitivity: larger margins reduce false positives on walls,
     # floors, and edges; smaller margins are more aggressive.
-    dynamic_filter/m_detector/case_depth_margin: 0.15
-    dynamic_filter/m_detector/map_consistency_depth: 0.25
+    dynamic_filter/m_detector/case_depth_margin: 0.28
+    dynamic_filter/m_detector/map_consistency_depth: 0.40
     # Cluster filtering: larger minimums and smaller max extent preserve static
     # structure; lower minimums are more aggressive on sparse objects.
-    dynamic_filter/m_detector/min_cluster_points: 60
-    dynamic_filter/m_detector/min_track_cluster_points: 120
-    dynamic_filter/m_detector/max_cluster_extent: 3.0
+    dynamic_filter/m_detector/min_cluster_points: 100
+    dynamic_filter/m_detector/min_track_cluster_points: 180
+    dynamic_filter/m_detector/max_cluster_extent: 2.4
     # Tracking: larger association/TTL keeps objects longer but can over-mask
     # static areas; higher confirm hits is more conservative.
     dynamic_filter/m_detector/max_assoc_distance: 0.9
     dynamic_filter/m_detector/track_confirm_hits: 2
-    dynamic_filter/m_detector/track_ttl_scans: 20
+    dynamic_filter/m_detector/track_ttl_scans: 12
     # Static veto: lower values are more static-preserving; higher values allow
     # more dynamic labels near previously stable structure.
-    dynamic_filter/m_detector/static_veto_ratio: 0.25
+    dynamic_filter/m_detector/static_veto_ratio: 0.12
+    # Rescue slow/stopped human clusters that briefly gained static voxel support
+    # before the detector had enough temporal evidence to remove them.
+    dynamic_filter/m_detector/body_static_bypass/enabled: true
+    dynamic_filter/m_detector/body_static_bypass/min_points: 100
+    dynamic_filter/m_detector/body_static_bypass/min_foreground_points: 40
+    dynamic_filter/m_detector/body_static_bypass/min_foreground_ratio: 0.10
+    dynamic_filter/m_detector/body_static_bypass/min_vertical_extent: 0.35
+    dynamic_filter/m_detector/body_static_bypass/max_vertical_extent: 2.40
+    dynamic_filter/m_detector/body_static_bypass/max_horizontal_extent: 2.80
+    dynamic_filter/m_detector/body_static_bypass/track_static_override: true
 
     # Aggressive (wn=3.0, zeta=0.85): Kp=5.1, Kv=9.0, Kq=12.0, Kab=3.0, Kgb=1.5
     odom/geo/Kp: 5.10

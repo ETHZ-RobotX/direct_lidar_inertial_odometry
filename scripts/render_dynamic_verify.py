@@ -21,7 +21,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-DEFAULT_OUT = '/home/tutuna/colcon_ws/src/summerschool_2026/outdoor_turcan_dual_lidar/replay_output'
+DEFAULT_OUT = os.path.join(
+    os.path.expanduser('~'), 'colcon_ws', 'src', 'summerschool_data', 'replay_output')
 
 _TYPE_MAP = {('F', 4): '<f4', ('F', 8): '<f8',
              ('U', 1): '<u1', ('U', 2): '<u2', ('U', 4): '<u4', ('U', 8): '<u8',

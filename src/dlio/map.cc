@@ -13,7 +13,12 @@
 #include "dlio/map.h"
 #include "dlio/utils.h"
 
+#include <cmath>
+#include <filesystem>
+
 namespace {
+
+constexpr char kDefaultSavePath[] = "/tmp/dlio_maps";
 
 template <typename PublisherPtrT>
 bool hasSubscribers(const PublisherPtrT& pub) {
@@ -386,7 +391,25 @@ void dlio::MapNode::savePCD(std::shared_ptr<direct_lidar_inertial_odometry::srv:
   }
 
   float leaf_size = req->leaf_size;
+  if (!std::isfinite(leaf_size) || leaf_size <= 0.0F) {
+    leaf_size = this->leaf_size_ > 0.0 ? static_cast<float>(this->leaf_size_) : 0.10F;
+  }
+
   std::string save_path = req->save_path;
+  if (save_path.empty()) {
+    save_path = kDefaultSavePath;
+  }
+
+  std::error_code mkdir_error;
+  std::filesystem::create_directories(save_path, mkdir_error);
+  if (mkdir_error) {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Failed to create map save directory '%s': %s",
+                 save_path.c_str(),
+                 mkdir_error.message().c_str());
+    res->success = false;
+    return;
+  }
 
   std::cout << std::setprecision(2) << "Saving map to " << save_path + "/dlio_map.pcd"
             << " with leaf size " << to_string_with_precision(leaf_size, 2) << "... ";

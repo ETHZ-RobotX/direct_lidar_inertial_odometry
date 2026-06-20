@@ -13,8 +13,8 @@ DLIO is a new lightweight LiDAR-inertial odometry algorithm with a novel coarse-
 
 This branch is a ROS 2 DLIO pipeline with several additions on top of the original odometry core:
 
-- ROS 2 launch files for generic DLIO and an A2 front-lidar setup.
-- A one-command `replay.launch.py` that plays a hardcoded MCAP (sim clock + RViz) and auto-saves the map and run-state plots when the bag ends.
+- ROS 2 launch files for generic DLIO and A2 front-lidar live/replay setups.
+- A simple `a2_front_replay.launch.py` that starts DLIO and opens an xterm bag player.
 - Online LiDAR-only dynamic object filtering with a clean-room M-detector-style backend.
 - Dynamic-removed point accumulation in the map node for saving `dynamic_points.pcd`.
 - Automatic run-state CSV export and plot generation for pose, twist, and estimated IMU biases.
@@ -73,34 +73,32 @@ after changing C++ code under `src/`.
 > as `-fsanitize=undefined`: they make the node run several times slower and can
 > abort it mid-run.
 
-### 4. Run it — easiest path: the replay launch
+### 4. Run it — A2 replay
 
-One command replays the dataset, shows it in RViz, and produces the maps + plots
-automatically:
+Start DLIO, RViz, and an xterm bag player:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 source <workspace>/install/setup.bash
-ros2 launch direct_lidar_inertial_odometry replay.launch.py
+ros2 launch direct_lidar_inertial_odometry a2_front_replay.launch.py \
+  bag:=/home/ttuna/colcon_ws/src/summerschool_data/arche_loop_0.mcap
 ```
 
-It plays a hardcoded MCAP with the sim clock, brings up the DLIO nodes + RViz,
-and when the bag ends it saves the map, renders the dynamic-removal check image,
-and writes the run-state plots. Details: [Replay An MCAP End-To-End](#replay-an-mcap-end-to-end).
+Focus the xterm and press SPACE to pause/resume playback.
 
-### 5. Find your results
+Details: [Replay An MCAP End-To-End](#replay-an-mcap-end-to-end).
 
-Everything lands next to the dataset:
+### 5. Save your map
 
-```text
-<bag_dir>/replay_output/
-├── maps/                      # clean_map.pcd (static map), dynamic_points.pcd, ...
-├── run_stats/                 # pose / twist / IMU-bias plots (.png/.pdf) + run_stats.csv
-└── human_removal_verify.png   # removed dynamic points (red) over the static map
+Call the map service while DLIO is still running:
+
+```bash
+ros2 service call /dlio_map_node/save_pcd direct_lidar_inertial_odometry/srv/SavePCD \
+  "{}"
 ```
 
-Open a `.pcd` in CloudCompare or `pcl_viewer`, and the `.png` files in any image
-viewer.
+Open `/tmp/dlio_maps/clean_map.pcd` or `/tmp/dlio_maps/dlio_map.pcd` in
+CloudCompare or `pcl_viewer`.
 
 The rest of this README is the detailed reference: manual two-terminal runs,
 saving maps on demand, tuning the dynamic filter, etc.
@@ -188,97 +186,43 @@ Set `rviz:=false` if you do not want RViz:
 ros2 launch direct_lidar_inertial_odometry dlio.launch.py rviz:=false use_sim_time:=true
 ```
 
-## Run The A2 Front-Lidar Setup
+## Run The A2 Front-Lidar Setup Live
 
-This launch is for bags that publish the front sensor pair on `/front_lidar/points` and `/front_lidar/imu`.
-
-Terminal 1:
+This launch is for the live A2 front sensor pair on `/front_lidar/points` and
+`/front_lidar/imu`.
 
 ```bash
 cd <workspace>
 source install/setup.bash
-ros2 launch direct_lidar_inertial_odometry a2_front.launch.py
+ros2 launch direct_lidar_inertial_odometry a2_front_live.launch.py
 ```
 
-Terminal 2 (new shell — source ROS 2 first):
-
-```bash
-source /opt/ros/jazzy/setup.bash
-ros2 bag play <a2_bag_or_mcap_path> \
-  -r 1.0 \
-  --clock \
-  --read-ahead-queue-size 2000 \
-  --remap /tf:=/tf_bag
-```
-
-Tip: prefer [`replay.launch.py`](#replay-an-mcap-end-to-end) below — it does both
-terminals (nodes + bag) and the saving for you in one command.
-
-The A2 launch enables:
+The live A2 launch enables:
 
 - `dynamic_filter/max_range:=10.0`
-- `map/save_dynamic_removed/enabled:=true`
-- run-state export and plot generation
+- live robot output topics `/state_estimation` and `/registered_scan`
+- map cropping for live memory control
 
-By default, run-state files and plots go to:
-
-```bash
-/tmp/dlio_run_stats
-```
-
-Override that directory:
+Set `rviz:=true` if you want the A2 RViz display during live operation:
 
 ```bash
-ros2 launch direct_lidar_inertial_odometry a2_front.launch.py output_dir:=/tmp/my_dlio_run
+ros2 launch direct_lidar_inertial_odometry a2_front_live.launch.py rviz:=true
 ```
 
 ## Replay An MCAP End-To-End
 
-`replay.launch.py` is a one-command, turnkey alternative to the two-terminal A2
-workflow above. It plays a hardcoded MCAP with the sim clock, brings up the A2
-front DLIO odom + map nodes and RViz2, and — when the bag finishes — automatically
-saves the map and generates the run-state plots, then shuts down.
+`a2_front_replay.launch.py` starts the A2 front DLIO odom + map nodes, RViz2,
+and an xterm running `ros2 bag play --clock`. It does not save maps
+automatically.
 
 ```bash
 cd <workspace>
 source install/setup.bash
-ros2 launch direct_lidar_inertial_odometry replay.launch.py
+ros2 launch direct_lidar_inertial_odometry a2_front_replay.launch.py \
+  bag:=/home/ttuna/colcon_ws/src/summerschool_data/arche_loop_0.mcap
 ```
 
-It does the following automatically:
-
-- Plays the hardcoded MCAP at `-r 1.0` with `--clock`, `--remap /tf:=/tf_bag`, and
-  a large read-ahead queue (started a few seconds after the nodes so no data is
-  missed).
-- Launches the A2 front odom + map nodes and RViz2 (`a2_front.rviz`) with
-  `use_sim_time:=true`.
-- On bag end: drains the backlog, saves the map (`clean_map.pcd`, `dlio_map.pcd`,
-  `dynamic_points.pcd` + `save_summary.txt`), renders the dynamic-removal
-  verification image (`human_removal_verify.png`: removed dynamic points in red
-  over the static map, plus a removed-point height profile), then shuts down so
-  the odom node writes the run-state plots.
-
-Outputs land next to the MCAP in `<bag_dir>/replay_output/{maps,run_stats}` plus
-`replay_output/human_removal_verify.png`.
-
-The verification image can also be regenerated standalone from any run's outputs:
-
-```bash
-python3 scripts/render_dynamic_verify.py <bag_dir>/replay_output
-```
-
-Set the dataset by editing the constants at the top of
-[launch/replay.launch.py](./launch/replay.launch.py) (`BAG`, plus `SAVE_LEAF` and
-the `*_SEC` drain/save timing).
-
-The bag runs as a launch process, so pause/resume with the player service rather
-than the SPACE key:
-
-```bash
-ros2 service call /rosbag2_player/pause          rosbag2_interfaces/srv/Pause        "{}"
-ros2 service call /rosbag2_player/resume         rosbag2_interfaces/srv/Resume       "{}"
-ros2 service call /rosbag2_player/toggle_paused  rosbag2_interfaces/srv/TogglePaused "{}"
-```
+Focus the xterm and press SPACE to pause/resume `ros2 bag play`.
 
 ## Save Maps
 
@@ -288,18 +232,14 @@ The map node exposes:
 /dlio_map_node/save_pcd
 ```
 
-Create an output directory first:
+Save the current map with defaults:
 
 ```bash
-mkdir -p /tmp/dlio_maps
+ros2 service call /dlio_map_node/save_pcd direct_lidar_inertial_odometry/srv/SavePCD "{}"
 ```
 
-Save the current map:
-
-```bash
-ros2 service call /dlio_map_node/save_pcd direct_lidar_inertial_odometry/srv/SavePCD \
-  "{leaf_size: 0.15, save_path: '/tmp/dlio_maps'}"
-```
+The default save directory is `/tmp/dlio_maps`; the default leaf size is
+`map/sparse/leafSize` from the map node parameters.
 
 Call this while the DLIO launch is still running and after enough keyframes have been published.
 
@@ -315,6 +255,13 @@ If `map/save_dynamic_removed/enabled:=true`, it also writes:
 - `/tmp/dlio_maps/dynamic_points.pcd`
 
 `clean_map.pcd` is the persistent map built from cleaned keyframes. `dynamic_points.pcd` contains points actually suppressed from keyframes/maps by the online dynamic filter. Registration-only candidates and intermediate debug likelihood points are not supposed to be accumulated into `dynamic_points.pcd`.
+
+Override the defaults when needed:
+
+```bash
+ros2 service call /dlio_map_node/save_pcd direct_lidar_inertial_odometry/srv/SavePCD \
+  "{leaf_size: 0.15, save_path: '/tmp/my_dlio_maps'}"
+```
 
 For full-mission maps, disable map cropping before the run:
 
@@ -444,7 +391,8 @@ When non-identity scaling is active, the odom node prints a large orange warning
 
 ## RViz
 
-Both launch files include RViz environment fixes for common container/X11 issues:
+The A2 and generic RViz launch paths include environment fixes for common
+container/X11 issues:
 
 ```bash
 DBUS_FATAL_WARNINGS=0
@@ -457,7 +405,7 @@ QT_X11_NO_MITSHM=1
 If RViz still fails in your environment, run DLIO without RViz:
 
 ```bash
-ros2 launch direct_lidar_inertial_odometry a2_front.launch.py rviz:=false
+ros2 launch direct_lidar_inertial_odometry a2_front_replay.launch.py rviz:=false
 ```
 
 and start RViz separately after fixing host/container display access.
