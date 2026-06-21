@@ -22,7 +22,7 @@
     map/dense/filtered: false
     map/sparse/leafSize: 0.10
 
-    map/crop/enabled: true       # set true to crop
+    map/crop/enabled: false       # set true to crop
     map/crop/box_size: 20.0      # meters (edge length of cube)
     map/crop/padding: 2.0        # meters of extra margin to reduce churn
     map/crop/period_sec: 2.0     # crop the stored map every N seconds
@@ -70,16 +70,16 @@
     odom/imu/unit_check/gyro_scale_override: 0.0
 
     odom/preprocessing/cropBoxFilter/size: 0.5
-    odom/preprocessing/voxelFilter/res: 0.15
+    odom/preprocessing/voxelFilter/res: 0.5
 
-    odom/keyframe/threshD: 5.0
+    odom/keyframe/threshD: 10.0
     odom/keyframe/threshR: 5.0
 
     odom/submap/keyframe/knn: 10
     odom/submap/keyframe/kcv: 10
     odom/submap/keyframe/kcc: 10
 
-    odom/gicp/minNumPoints: 64
+    odom/gicp/minNumPoints: 32
     odom/gicp/kCorrespondences: 7
     odom/gicp/maxCorrespondenceDistance: 0.5
     odom/gicp/maxIterations: 64
@@ -108,7 +108,7 @@
     #   increases memory and can make temporal support more sparse.
     # - warmup_scans delays confident dynamic decisions until enough temporal context
     #   exists.
-    dynamic_filter/enabled: true
+    dynamic_filter/enabled: false
     # Build and publish removed-point clouds only when dynamic_removed has a subscriber.
     # Set true for deterministic dynamic_points.pcd generation if subscriber discovery is a concern.
     dynamic_filter/force_removed_cloud_output: false
@@ -139,8 +139,8 @@
     dynamic_filter/m_detector/map_consistency_depth: 0.40
     # Cluster filtering: larger minimums and smaller max extent preserve static
     # structure; lower minimums are more aggressive on sparse objects.
-    dynamic_filter/m_detector/min_cluster_points: 100
-    dynamic_filter/m_detector/min_track_cluster_points: 180
+    dynamic_filter/m_detector/min_cluster_points: 50
+    dynamic_filter/m_detector/min_track_cluster_points: 100
     dynamic_filter/m_detector/max_cluster_extent: 2.4
     # Tracking: larger association/TTL keeps objects longer but can over-mask
     # static areas; higher confirm hits is more conservative.

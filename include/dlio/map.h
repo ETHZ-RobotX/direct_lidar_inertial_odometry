@@ -71,7 +71,6 @@ private:
   std::mutex pose_mtx_;
   pcl::VoxelGrid<PointType> voxelgrid;
 
-  std::string odom_frame;
   double leaf_size_;
   bool save_dynamic_removed_enabled_{false};
   std::size_t dynamic_removed_topic_count_{0};

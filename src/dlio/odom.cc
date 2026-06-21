@@ -284,6 +284,9 @@ dlio::OdomNode::OdomNode() : Node("dlio_odom_node") {
                              .history(RMW_QOS_POLICY_HISTORY_KEEP_LAST);
 
   this->kf_cloud_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("kf_cloud", best_effort_qos);
+  this->convex_registration_cloud_pub_ =
+      this->create_publisher<sensor_msgs::msg::PointCloud2>(
+          "convex_registration_keyframes", best_effort_qos);
   this->deskewed_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("deskewed", best_effort_qos);
   this->deskewed_not_transformed_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("deskewed_not_transformed", best_effort_qos);
   this->deskewed_map_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("deskewed_and_transformed_to_map", reliable_qos);
@@ -304,6 +307,9 @@ dlio::OdomNode::OdomNode() : Node("dlio_odom_node") {
       "markers/correction", marker_qos);
   this->pub_degen_marker_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "markers/degeneracy_directions", marker_qos);
+  this->pub_convex_registration_voxels_ =
+      this->create_publisher<visualization_msgs::msg::MarkerArray>(
+          "markers/convex_registration_voxels", marker_qos);
   this->corr_marker_points_.reserve(
       2U * static_cast<std::size_t>(std::max(1, this->viz_corr_max_segments_)));
 
@@ -366,6 +372,8 @@ dlio::OdomNode::OdomNode() : Node("dlio_odom_node") {
 
   this->submap_hasChanged = true;
   this->submap_kf_idx_prev.clear();
+  this->convex_registration_kf_idx_pub_prev_.clear();
+  this->convex_registration_debug_published_ = false;
 
   this->first_scan_stamp = 0.;
   this->elapsed_time = 0.;
@@ -829,6 +837,8 @@ void dlio::OdomNode::performReset() {
   this->keyframe_concave.clear();
   this->submap_kf_idx_curr.clear();
   this->submap_kf_idx_prev.clear();
+  this->convex_registration_kf_idx_pub_prev_.clear();
+  this->convex_registration_debug_published_ = false;
   this->submap_cloud   = std::make_shared<const pcl::PointCloud<PointType>>();
   this->submap_normals = nullptr;
   this->submap_kdtree  = nullptr;
@@ -945,6 +955,18 @@ void dlio::OdomNode::performReset() {
       del_arr.markers.push_back(m);
     }
     this->pub_degen_marker_->publish(del_arr);
+  }
+  // Delete convex registration voxel cubes.
+  if (hasSubscribers(this->pub_convex_registration_voxels_)) {
+    visualization_msgs::msg::MarkerArray del_arr;
+    visualization_msgs::msg::Marker m;
+    m.header.stamp    = now;
+    m.header.frame_id = "dlio_map";
+    m.ns     = "convex_registration_voxels";
+    m.id     = 0;
+    m.action = visualization_msgs::msg::Marker::DELETE;
+    del_arr.markers.push_back(m);
+    this->pub_convex_registration_voxels_->publish(del_arr);
   }
   RCLCPP_INFO(this->get_logger(),
               "[RESET] Visualisation state cleared and empty paths/markers published.");
@@ -4694,36 +4716,126 @@ void dlio::OdomNode::setAdaptiveParams() {
 
 }
 
-void dlio::OdomNode::pushSubmapIndices(std::vector<float> dists, int k, std::vector<int> frames) {
+std::vector<int> dlio::OdomNode::selectSubmapIndices(
+    std::vector<float> dists, int k, std::vector<int> frames) const {
+
+  std::vector<int> selected;
 
   // make sure dists is not empty and k is valid
-  if (dists.empty() || k <= 0) { return; }
+  if (dists.empty() || frames.empty() || k <= 0) { return selected; }
+
+  const std::size_t n = std::min(dists.size(), frames.size());
+  const std::size_t max_selected = static_cast<std::size_t>(k);
 
   // maintain max heap of at most k elements
   std::priority_queue<float> pq;
 
-  for (auto d : dists) {
-    if (pq.size() >= k && pq.top() > d) {
+  for (std::size_t i = 0; i < n; ++i) {
+    const float d = dists[i];
+    if (pq.size() >= max_selected && pq.top() > d) {
       pq.push(d);
       pq.pop();
-    } else if (pq.size() < k) {
+    } else if (pq.size() < max_selected) {
       pq.push(d);
     }
   }
 
   if (pq.empty()) {
-    return;
+    return selected;
   }
 
   // get the kth smallest element, which should be at the top of the heap
   float kth_element = pq.top();
 
   // get all elements smaller or equal to the kth smallest element
-  for (int i = 0; i < dists.size(); ++i) {
+  for (std::size_t i = 0; i < n; ++i) {
     if (dists[i] <= kth_element)
-      this->submap_kf_idx_curr.push_back(frames[i]);
+      selected.push_back(frames[i]);
   }
 
+  return selected;
+}
+
+void dlio::OdomNode::pushSubmapIndices(std::vector<float> dists, int k, std::vector<int> frames) {
+  const auto selected = this->selectSubmapIndices(std::move(dists), k, std::move(frames));
+  this->submap_kf_idx_curr.insert(
+      this->submap_kf_idx_curr.end(), selected.begin(), selected.end());
+}
+
+void dlio::OdomNode::publishConvexRegistrationKeyframes(const std::vector<int>& keyframe_indices) {
+  const bool want_cloud = hasSubscribers(this->convex_registration_cloud_pub_);
+  const bool want_voxels = hasSubscribers(this->pub_convex_registration_voxels_);
+  if (!want_cloud && !want_voxels) {
+    return;
+  }
+
+  auto convex_cloud = std::make_shared<pcl::PointCloud<PointType>>();
+  {
+    std::unique_lock<decltype(this->keyframes_mutex)> lock(this->keyframes_mutex);
+    for (const int k : keyframe_indices) {
+      if (k < 0 || k >= static_cast<int>(this->keyframes.size()) ||
+          !this->keyframes[k].registration_cloud) {
+        continue;
+      }
+      *convex_cloud += *this->keyframes[k].registration_cloud;
+    }
+  }
+
+  if (want_cloud) {
+    sensor_msgs::msg::PointCloud2 msg;
+    if (convex_cloud->empty()) {
+      prepare_xyz_msg(msg, "dlio_map", rclcpp::Time(this->scan_header_stamp), 0);
+    } else {
+      pcl::toROSMsg(*convex_cloud, msg);
+      msg.header.stamp = this->scan_header_stamp;
+      msg.header.frame_id = "dlio_map";
+    }
+    this->convex_registration_cloud_pub_->publish(msg);
+  }
+
+  if (want_voxels) {
+    visualization_msgs::msg::MarkerArray marker_array;
+    visualization_msgs::msg::Marker marker;
+    marker.header.stamp = this->scan_header_stamp;
+    marker.header.frame_id = "dlio_map";
+    marker.ns = "convex_registration_voxels";
+    marker.id = 0;
+
+    if (convex_cloud->empty()) {
+      marker.action = visualization_msgs::msg::Marker::DELETE;
+      marker_array.markers.push_back(std::move(marker));
+      this->pub_convex_registration_voxels_->publish(marker_array);
+      return;
+    }
+
+    marker.type = visualization_msgs::msg::Marker::CUBE_LIST;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.orientation.w = 1.0;
+    const double voxel_size = this->vf_res_ > 0.0 ? this->vf_res_ : 0.05;
+    marker.scale.x = voxel_size;
+    marker.scale.y = voxel_size;
+    marker.scale.z = voxel_size;
+    marker.color.a = 0.65;
+    marker.color.r = 1.0;
+    marker.color.g = 1.0;
+    marker.color.b = 1.0;
+    marker.lifetime = rclcpp::Duration::from_seconds(0.0);
+    marker.points.reserve(convex_cloud->size());
+
+    for (const auto& p : convex_cloud->points) {
+      if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) {
+        continue;
+      }
+      geometry_msgs::msg::Point center;
+      center.x = p.x;
+      center.y = p.y;
+      center.z = p.z;
+      marker.points.push_back(center);
+    }
+
+    marker_array.markers.push_back(std::move(marker));
+    this->pub_convex_registration_voxels_->publish(marker_array);
+  }
 }
 
 void dlio::OdomNode::buildSubmap(const State& vehicle_state) {
@@ -4760,7 +4872,30 @@ void dlio::OdomNode::buildSubmap(const State& vehicle_state) {
   }
 
   // get indices for top kNN for convex hull
-  this->pushSubmapIndices(convex_ds, this->submap_kcv_, convex_frames);
+  const auto convex_selected =
+      this->selectSubmapIndices(convex_ds, this->submap_kcv_, convex_frames);
+  this->submap_kf_idx_curr.insert(
+      this->submap_kf_idx_curr.end(), convex_selected.begin(), convex_selected.end());
+
+  auto convex_selected_normalized = convex_selected;
+  std::sort(convex_selected_normalized.begin(), convex_selected_normalized.end());
+  auto convex_selected_last =
+      std::unique(convex_selected_normalized.begin(), convex_selected_normalized.end());
+  convex_selected_normalized.erase(convex_selected_last, convex_selected_normalized.end());
+
+  const bool want_convex_debug =
+      hasSubscribers(this->convex_registration_cloud_pub_) ||
+      hasSubscribers(this->pub_convex_registration_voxels_);
+  if (want_convex_debug) {
+    if (!this->convex_registration_debug_published_ ||
+        convex_selected_normalized != this->convex_registration_kf_idx_pub_prev_) {
+      this->publishConvexRegistrationKeyframes(convex_selected_normalized);
+      this->convex_registration_kf_idx_pub_prev_ = std::move(convex_selected_normalized);
+      this->convex_registration_debug_published_ = true;
+    }
+  } else {
+    this->convex_registration_debug_published_ = false;
+  }
 
   // get concave hull indices
   this->computeConcaveHull();

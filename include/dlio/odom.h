@@ -151,10 +151,12 @@ void publishCloud(const pcl::PointCloud<PointType>::ConstPtr& cloud,
   void updateKeyframes();
   void computeConvexHull();
   void computeConcaveHull();
+  std::vector<int> selectSubmapIndices(std::vector<float> dists, int k, std::vector<int> frames) const;
   void pushSubmapIndices(std::vector<float> dists, int k, std::vector<int> frames);
   void buildSubmap(const State& vehicle_state);
   void buildKeyframesAndSubmap(const State& vehicle_state);
   void pauseSubmapBuildIfNeeded();
+  void publishConvexRegistrationKeyframes(const std::vector<int>& keyframe_indices);
 
   void publishPoseSnapshot();
   void onKeyframesTrim(std::size_t removed);
@@ -206,6 +208,7 @@ void publishCloud(const pcl::PointCloud<PointType>::ConstPtr& cloud,
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_map_prop_pub;
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr kf_pose_pub;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr kf_cloud_pub;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr convex_registration_cloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr deskewed_pub;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr deskewed_not_transformed_pub;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr deskewed_map_pub;
@@ -219,6 +222,7 @@ void publishCloud(const pcl::PointCloud<PointType>::ConstPtr& cloud,
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pub_ang_vel_marker_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pub_corr_marker_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_degen_marker_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_convex_registration_voxels_;
 
   // TF
   std::shared_ptr<tf2_ros::TransformBroadcaster> br;
@@ -314,6 +318,8 @@ void publishCloud(const pcl::PointCloud<PointType>::ConstPtr& cloud,
 
   std::vector<int> submap_kf_idx_curr;
   std::vector<int> submap_kf_idx_prev;
+  std::vector<int> convex_registration_kf_idx_pub_prev_;
+  bool convex_registration_debug_published_{false};
 
   bool new_submap_is_ready = false;
   std::future<void> submap_future;

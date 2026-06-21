@@ -61,6 +61,7 @@ def generate_launch_description():
             ('path_map_prop', 'dlio/odom_node/path_map_prop'),
             ('kf_pose', 'dlio/odom_node/keyframes'),
             ('kf_cloud', 'dlio/odom_node/pointcloud/keyframe'),
+            ('convex_registration_keyframes', 'dlio/odom_node/pointcloud/convex_registration_keyframes'),
             ('deskewed', 'dlio/odom_node/pointcloud/deskewed'),
             ('deskewed_not_transformed', 'dlio/odom_node/pointcloud/deskewed_not_transformed'),
             ('deskewed_and_transformed_to_map', 'dlio/odom_node/pointcloud/deskewed_and_transformed_to_map'),
@@ -69,6 +70,7 @@ def generate_launch_description():
             ('markers/velocity_angular', 'dlio/odom_node/markers/velocity_angular'),
             ('markers/correction', 'dlio/odom_node/markers/correction'),
             ('markers/degeneracy_directions', 'dlio/odom_node/markers/degeneracy_directions'),
+            ('markers/convex_registration_voxels', 'dlio/odom_node/markers/convex_registration_voxels'),
         ],
         respawn=True,
     )

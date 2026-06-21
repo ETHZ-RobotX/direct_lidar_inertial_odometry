@@ -19,6 +19,7 @@
 namespace {
 
 constexpr char kDefaultSavePath[] = "/tmp/dlio_maps";
+constexpr char kMapFrame[] = "dlio_map";
 
 template <typename PublisherPtrT>
 bool hasSubscribers(const PublisherPtrT& pub) {
@@ -167,7 +168,6 @@ bool dlio::MapNode::shouldStop() {
 }
 
 void dlio::MapNode::getParams() {
-  this->declare_parameter<std::string>("frames/odom", "odom");
   this->declare_parameter<double>("map/sparse/leafSize", 0.5);
   this->declare_parameter<bool>("map/crop/enabled", false);
   this->declare_parameter<double>("map/crop/box_size", 30.0);
@@ -175,7 +175,6 @@ void dlio::MapNode::getParams() {
   this->declare_parameter<double>("map/crop/padding", 0.0);
   this->declare_parameter<bool>("map/save_dynamic_removed/enabled", false);
 
-  this->get_parameter("frames/odom", this->odom_frame);
   this->get_parameter("map/sparse/leafSize", this->leaf_size_);
 
   this->get_parameter("map/crop/enabled", this->crop_enabled_);
@@ -266,7 +265,7 @@ void dlio::MapNode::callbackKeyframe(const sensor_msgs::msg::PointCloud2::ConstS
       sensor_msgs::msg::PointCloud2 map_ros;
       pcl::toROSMsg(*out_cloud, map_ros);
       map_ros.header.stamp = this->now();
-      map_ros.header.frame_id = this->odom_frame;
+      map_ros.header.frame_id = kMapFrame;
       this->map_pub->publish(map_ros);
     }
   }
