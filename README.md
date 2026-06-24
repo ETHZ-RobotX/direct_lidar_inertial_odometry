@@ -85,6 +85,13 @@ ros2 launch direct_lidar_inertial_odometry a2_front_replay.launch.py \
   bag:=/home/ttuna/colcon_ws/src/summerschool_data/arche_loop_0.mcap
 ```
 
+For bag paths that contain spaces, quote the whole `bag:=...` value:
+
+```bash
+ros2 launch direct_lidar_inertial_odometry a2_front_replay.launch.py \
+  bag:="/media/ttuna/RSS2026/A2 bags/challenge_1_0.mcap"
+```
+
 Focus the xterm and press SPACE to pause/resume playback.
 
 Details: [Replay An MCAP End-To-End](#replay-an-mcap-end-to-end).
@@ -137,7 +144,7 @@ YAML and launch-file edits do not require a rebuild; C++ edits still do.
 | `dlio.launch.py` | `use_sim_time` | `false` | Set `true` when playing a bag with `--clock`. |
 | `dlio.launch.py` | `pointcloud_topic` | `/lidar_points` | Input `sensor_msgs/msg/PointCloud2` topic. |
 | `dlio.launch.py` | `imu_topic` | `/lidar_imu` | Input `sensor_msgs/msg/Imu` topic. |
-| `a2_front_replay.launch.py` | `bag` | `~/colcon_ws/src/summerschool_data/arche_loop_0.mcap` | Bag or MCAP opened in the xterm player. |
+| `a2_front_replay.launch.py` | `bag` | `/media/ttuna/RSS2026/A2 bags/challenge_1_0.mcap` | Bag or MCAP opened in the xterm player. |
 | `a2_front_replay.launch.py` | `play_rate` | `1.0` | Playback speed passed to `ros2 bag play -r`. |
 | `a2_front_replay.launch.py` | `read_ahead_queue_size` | `2000` | Bag-player read-ahead queue. Increase for bursty storage. |
 | `a2_front_replay.launch.py` | `pointcloud_topic` | `/front_lidar/points` | A2 front LiDAR point cloud input. |
@@ -396,6 +403,14 @@ source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 launch direct_lidar_inertial_odometry a2_front_replay.launch.py \
   bag:=/home/ttuna/colcon_ws/src/summerschool_data/arche_loop_0.mcap
+```
+
+ROS 2 launch arguments must use `name:=value`. If the path contains spaces,
+quote the whole `bag:=...` value:
+
+```bash
+ros2 launch direct_lidar_inertial_odometry a2_front_replay.launch.py \
+  bag:="/media/ttuna/RSS2026/A2 bags/challenge_1_0.mcap"
 ```
 
 Focus the xterm and press SPACE to pause/resume `ros2 bag play`.

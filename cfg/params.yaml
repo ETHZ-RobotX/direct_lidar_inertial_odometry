@@ -69,8 +69,8 @@
     odom/imu/unit_check/accel_scale_override: 0.0
     odom/imu/unit_check/gyro_scale_override: 0.0
 
-    odom/preprocessing/cropBoxFilter/size: 0.5
-    odom/preprocessing/voxelFilter/res: 0.5
+    odom/preprocessing/cropBoxFilter/size: 0.15
+    odom/preprocessing/voxelFilter/res: 0.25
 
     odom/keyframe/threshD: 10.0
     odom/keyframe/threshR: 5.0
@@ -79,8 +79,8 @@
     odom/submap/keyframe/kcv: 10
     odom/submap/keyframe/kcc: 10
 
-    odom/gicp/minNumPoints: 32
-    odom/gicp/kCorrespondences: 7
+    odom/gicp/minNumPoints: 64
+    odom/gicp/kCorrespondences: 21
     odom/gicp/maxCorrespondenceDistance: 0.5
     odom/gicp/maxIterations: 64
 

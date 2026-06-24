@@ -2,7 +2,11 @@ import os
 import shlex
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    OpaqueFunction,
+)
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -10,7 +14,7 @@ from launch_ros.substitutions import FindPackageShare
 
 
 DEFAULT_BAG = os.path.join(
-    os.path.expanduser('~'), 'colcon_ws', 'src', 'summerschool_data', 'arche_loop_0.mcap')
+    '/media', 'ttuna', 'RSS2026', 'A2 bags', 'challenge_1_0.mcap')
 
 
 def rviz_environment():
